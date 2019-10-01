@@ -31,7 +31,7 @@ from .g_wind import (get_destag_wspd_wdir, get_destag_wspd_wdir10,
 from .g_times import get_times, get_xtimes
 from .g_cloudfrac import (get_cloudfrac, get_low_cloudfrac, get_mid_cloudfrac,
                           get_high_cloudfrac)
-
+import numpy as np
 
 # func is the function to call.  kargs are required arguments that should
 # not be altered by the user
@@ -227,7 +227,7 @@ def _check_kargs(var, kargs):
 
 
 def getvar(wrfin, varname, timeidx=0,
-           method="cat", squeeze=True, cache=None, meta=True,
+           method="join", squeeze=True, cache=None, meta=True, fix_c=True, ht=None,
            **kwargs):
 
     """Returns basic diagnostics from the WRF ARW model output.
@@ -337,19 +337,59 @@ def getvar(wrfin, varname, timeidx=0,
     _key = get_id(wrfin)
 
     wrfin = get_iterable(wrfin)
-
+    skip = False
     if is_standard_wrf_var(wrfin, varname) and varname != "Times":
+        skip = True
         _check_kargs("default", kwargs)
-        return extract_vars(wrfin, timeidx, varname,
+        ds = extract_vars(wrfin, timeidx, varname,
                             method, squeeze, cache, meta, _key)[varname]
     elif varname == "Times":
         varname = "times"  # Diverting to the get_times routine
 
-    actual_var = _undo_alias(varname)
-    if actual_var not in _VALID_KARGS:
-        raise ValueError("'{}' is not a valid variable name".format(varname))
+    if not skip:
+        actual_var = _undo_alias(varname)
+        if actual_var not in _VALID_KARGS:
+            raise ValueError("'{}' is not a valid variable name".format(varname))
+    
+        _check_kargs(actual_var, kwargs)
+    
+        ds = _FUNC_MAP[actual_var](wrfin, timeidx, method, squeeze, cache, meta, _key, **kwargs)
+    if fix_c:
+        try:
+            dx, dy = wrfin.DX, wrfin.DY
+        except AttributeError:
+            dxy = [[file.DX, file.DY] for file in wrfin]
+            if any([dxyi != dxy[0] for dxyi in dxy]):
+                raise RuntimeError("Horizontal resolutions of all input files must be identical to fix coords!")
+            else:
+                dx, dy = dxy[0]
+        ds = fix_coords(ds, dx=dx, dy=dy)
+    if ht is not None:
+        ds = ds.assign_coords(height=ht)
+    return ds
+    
+def fix_coords(data, dx, dy):
+    """Removes coordinates not needed in idealized simulation"""
+    for c in ["XLONG", "XLAT"]:
+        if c in data.coords:
+            data = data.drop(c)
+    if "XTIME" in data.coords:
+       # data["Time"] = (data["XTIME"]/60).assign_attrs({"units" : "h"})
+        data = data.drop("XTIME")
+    if "datetime" in data.coords:
+        time = data.datetime
+        try:
+            t0 = time[0]
+        except IndexError:
+            t0 = time
+        if (t0 == time).all():
+            data = data.assign_coords(Time=t0.data)
+            data = data.drop("datetime")
 
-    _check_kargs(actual_var, kwargs)
-
-    return _FUNC_MAP[actual_var](wrfin, timeidx, method, squeeze, cache,
-                                 meta, _key, **kwargs)
+    for dim, res in zip(["south_north", "west_east"], [dy, dx]):
+        data[dim] = np.arange(data.sizes[dim]) * res
+        data[dim] = data[dim] - (data[dim][-1] + res)/2
+        data[dim] = data[dim].assign_attrs({"units" : "m"})
+    data = data.rename(south_north="y", west_east="x")        
+        
+    return data
