@@ -378,18 +378,27 @@ def fix_coords(data, dx, dy):
         data = data.drop("XTIME")
     if "datetime" in data.coords:
         time = data.datetime
-        try:
-            t0 = time[0]
-        except IndexError:
-            t0 = time
-        if (t0 == time).all():
-            data = data.assign_coords(Time=t0.data)
-            data = data.drop("datetime")
-
-    for dim, res in zip(["south_north", "west_east"], [dy, dx]):
-        data[dim] = np.arange(data.sizes[dim]) * res
-        data[dim] = data[dim] - (data[dim][-1] + res)/2
-        data[dim] = data[dim].assign_attrs({"units" : "m"})
-    data = data.rename(south_north="y", west_east="x")        
+        t0 = time
+        if "file" in data.dims:
+            try:
+                t0 = time[0]
+            except IndexError:
+                t0 = time
+            if (t0 != time).any():
+                raise RuntimeError("Time stams not equal among all files")
+            
+        data = data.assign_coords(Time=t0.data)
+        data = data.drop("datetime")
         
+    for dim, res, dimn in zip(["south_north", "west_east"], [dy, dx], ["y", "x"]):
+        for stag in [True, False]:
+            dimc = dim
+            if stag:
+                dimc = dim + "_stag"
+            if dimc in data.dims:
+                data[dimc] = np.arange(data.sizes[dimc]) * res
+                data[dimc] = data[dimc] - (data[dimc][-1] + res)/2
+                data[dimc] = data[dimc].assign_attrs({"units" : "m"})
+                data = data.rename({dimc : dimn})        
+            
     return data
