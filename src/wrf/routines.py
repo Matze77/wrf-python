@@ -364,7 +364,7 @@ def getvar(wrfin, varname, timeidx=0,
             else:
                 dx, dy = dxy[0]
         ds = fix_coords(ds, dx=dx, dy=dy)
-    if ht is not None:
+    if (ht is not None) and ("bottom_top" in ds.dims):
         ds = ds.assign_coords(height=ht)
     return ds
     
