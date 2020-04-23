@@ -19,6 +19,7 @@ from .g_rh import get_rh, get_rh_2m
 from .g_slp import get_slp
 from .g_temp import (get_tc, get_eth, get_temp, get_theta, get_tk, get_tv,
                      get_tw)
+from .g_rho import get_rho
 from .g_terrain import get_terrain
 from .g_uvmet import (get_uvmet, get_uvmet10, get_uvmet10_wspd_wdir,
                       get_uvmet_wspd_wdir, get_uvmet_wspd, get_uvmet_wdir,
@@ -57,6 +58,7 @@ _FUNC_MAP = {"cape2d": get_2dcape,
              "theta_e": get_eth,
              "tv": get_tv,
              "twb": get_tw,
+             "rho" : get_rho,
              "terrain": get_terrain,
              "times": get_times,
              "xtimes": get_xtimes,
@@ -122,6 +124,7 @@ _VALID_KARGS = {"cape2d": ["missing"],
                 "theta_e": ["units"],
                 "tv": ["units"],
                 "twb": ["units"],
+                "rho" : [],
                 "terrain": ["units"],
                 "times": [],
                 "xtimes": [],
@@ -185,6 +188,7 @@ _ALIASES = {"cape_2d": "cape2d",
             "updraft_helicity": "uhel",
             "td": "dp",
             "td2": "dp2m",
+            "density" : "rho",
             "cfrac": "cloudfrac",
             "wspd_wdir_uvmet": "uvmet_wspd_wdir",
             "wspd_wdir_uvmet10": "uvmet10_wspd_wdir",
@@ -350,9 +354,9 @@ def getvar(wrfin, varname, timeidx=0,
         actual_var = _undo_alias(varname)
         if actual_var not in _VALID_KARGS:
             raise ValueError("'{}' is not a valid variable name".format(varname))
-    
+
         _check_kargs(actual_var, kwargs)
-    
+
         ds = _FUNC_MAP[actual_var](wrfin, timeidx, method, squeeze, cache, meta, _key, **kwargs)
     if fix_c:
         try:
@@ -367,7 +371,7 @@ def getvar(wrfin, varname, timeidx=0,
     if (ht is not None) and ("bottom_top" in ds.dims):
         ds = ds.assign_coords(height=ht)
     return ds
-    
+
 def fix_coords(data, dx, dy):
     """Removes coordinates not needed in idealized simulation"""
     for c in ["XLONG", "XLAT"]:
@@ -386,10 +390,10 @@ def fix_coords(data, dx, dy):
                 t0 = time
             if (t0 != time).any():
                 raise RuntimeError("Time stams not equal among all files")
-            
+
         data = data.assign_coords(Time=t0.data)
         data = data.drop("datetime")
-        
+
     for dim, res, dimn in zip(["south_north", "west_east"], [dy, dx], ["y", "x"]):
         for stag in [True, False]:
             dimc = dim
@@ -399,6 +403,6 @@ def fix_coords(data, dx, dy):
                 data[dimc] = np.arange(data.sizes[dimc]) * res
                 data[dimc] = data[dimc] - (data[dimc][-1] + res)/2
                 data[dimc] = data[dimc].assign_attrs({"units" : "m"})
-                data = data.rename({dimc : dimn})        
-            
+                data = data.rename({dimc : dimn})
+
     return data
